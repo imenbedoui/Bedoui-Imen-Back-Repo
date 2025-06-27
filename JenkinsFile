@@ -1,0 +1,78 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKERHUB_CREDENTIALS = 'dockerhub-creds-id'
+        SONARQUBE_SERVER = 'SonarQube'
+        NEXUS_URL = 'http://nexus:8081/repository/maven-releases/'
+        APP_NAME = 'kaddem-backend'
+    }
+
+    stages {
+        stage('Clone repo') {
+            steps {
+                git credentialsId: 'github-creds-id', url: 'https://github.com/your-user/YourSpringBootRepo.git'
+            }
+        }
+
+        stage('Clean target') {
+            steps {
+                sh 'rm -rf target'
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh './mvnw clean package -DskipTests=false'
+            }
+        }
+
+        stage('Run unit tests') {
+            steps {
+                sh './mvnw test'
+            }
+        }
+
+        stage('SonarQube analysis') {
+            steps {
+                withSonarQubeEnv(SONARQUBE_SERVER) {
+                    sh './mvnw sonar:sonar'
+                }
+            }
+        }
+
+        stage('Publish to Nexus') {
+            steps {
+                // Upload jar to Nexus (adapter selon ton repo)
+                // sh 'curl -v -u user:password --upload-file target/app.jar $NEXUS_URL'
+                echo 'Upload to Nexus here'
+            }
+        }
+
+        stage('Build Docker image') {
+            steps {
+                script {
+                    dockerImage = docker.build("your-dockerhub-username/${APP_NAME}:latest")
+                }
+            }
+        }
+
+        stage('Push Docker image') {
+            steps {
+                script {
+                    docker.withRegistry('', DOCKERHUB_CREDENTIALS) {
+                        dockerImage.push()
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        failure {
+            mail to: 'your-email@example.com',
+                 subject: "Backend Build Failed: ${env.JOB_NAME}",
+                 body: "Check Jenkins for details: ${env.BUILD_URL}"
+        }
+    }
+}
